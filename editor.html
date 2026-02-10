@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Gnomad Editor</title>
+    <style>
+        body {
+            margin: 0;
+            background: #111827;
+            color: white;
+            font-family: sans-serif;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            background: #1f2937;
+            padding: 10px 20px;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            border-bottom: 1px solid #374151;
+        }
+
+        #container {
+            flex: 1;
+            overflow: auto;
+            padding: 40px;
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+            background: #0f172a;
+        }
+
+        canvas {
+            background: white;
+            cursor: crosshair;
+            display: block;
+            flex-shrink: 0;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        button {
+            background: #374151;
+            color: white;
+            border: 1px solid #4b5563;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #4b5563;
+        }
+
+        .primary {
+            background: #4f46e5;
+            border: none;
+        }
+
+        select {
+            background: #374151;
+            color: white;
+            border: 1px solid #4b5563;
+            padding: 5px;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+
+<body>
+    <header>
+        <div style="font-weight:bold; color:#818cf8;">GNOMAD EDITOR</div>
+        <div class="controls">
+            <button id="savePng">Save PNG</button>
+            <button id="copyBtn">Copy to Clipboard</button>
+            <div style="width:1px; height:20px; background:#4b5563;"></div>
+            <select id="pdfMode">
+                <option value="single">Single Page PDF</option>
+                <option value="a4">Paginated A4</option>
+            </select>
+            <button id="savePdf" class="primary">Export PDF</button>
+        </div>
+        <span style="font-size:11px; opacity:0.7;">Click & Drag on image to Redact (Black out)</span>
+    </header>
+    <div id="container">
+        <canvas id="canvas"></canvas>
+    </div>
+    <script src="lib/jspdf.umd.min.js"></script>
+    <script src="editor.js"></script>
+</body>
+
+</html>
