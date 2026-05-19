@@ -1,49 +1,53 @@
 # Gnomad Capture
 
-**Capture Your Digital Journey with Gnomad Capture.**
+Full-page screen capture for Chrome — scroll, stitch, redact, and export to PNG or PDF. All processing stays in your browser.
 
-The premium screen capture tool for pros. Instantly capture, stitch, and export full webpages to PDF or PNG. Smart handling for sticky headers and scrollable apps.
+## Features
 
-## 🚀 Features
+- **Full-page stitching** — scrolls the page (or main scroll container), captures tiles, and merges them in the editor
+- **Sticky/fixed hiding** — optionally hides fixed and sticky elements so headers do not repeat in every slice
+- **Redaction** — drag black boxes over sensitive areas before export
+- **Export** — PNG download, clipboard copy, single-page PDF, or paginated A4 PDF
+- **Privacy-first** — no servers; captures live in extension storage until you export
 
-*   **📸 Smart Full-Page Stitching**: Automatically scrolls and stitches long web pages into a single, high-resolution image.
-*   **🧠 Intelligent Element Handling**: **Detects and temporarily hides sticky headers**, footers, and floating widgets so they don't clutter your screenshot.
-*   **Editor & Redaction**: Crop, annotate, and redact sensitive information using the intuitive redaction tool before saving.
-*   **Clip & Export**: One-click copy to paste directly into Slack/email, or export as a seamless single-page PDF or paginated A4 document.
-*   **Privacy First**: All processing happens locally in your browser. No servers, no tracking.
+## Install (development)
 
-## 📥 Installation
+1. Clone [github.com/davidthegnomad/gnomad_capture](https://github.com/davidthegnomad/gnomad_capture)
+2. Open `chrome://extensions`
+3. Enable **Developer mode**
+4. **Load unpacked** → select this folder (must contain `manifest.json`)
 
-### From Chrome Web Store
-*(Link to come!)*
+## Usage
 
-### Local Development / Manual Install
-1.  Clone this repository:
-    ```bash
-    git clone https://github.com/gnomad-capture/gnomad-capture.git
-    cd gnomad-capture
-    ```
-2.  Open Chrome/Edge and navigate to `chrome://extensions`.
-3.  Enable **Developer mode** (toggle in the top right).
-4.  Click **Load unpacked**.
-5.  Select the `gnomad-capture` folder (ensure you select the folder containing `manifest.json`).
+1. Open a normal website (not `chrome://` or the Web Store).
+2. Click the Gnomad Capture toolbar icon → **Capture Full Page**.
+3. Wait for the progress badge on the icon.
+4. The **editor** tab opens when stitching is ready.
+5. Drag to redact, then **Save PNG**, **Copy**, or **Export PDF**.
 
-## 🛠️ Usage
+Right-click any page → **Gnomad: Capture Full Page**.
 
-1.  Click the **Gnomad Capture** icon in your browser toolbar (or right-click anywhere on a page).
-2.  Select **Capture Full Page**.
-3.  Watch the capture progress badge on the icon.
-4.  Once complete, the **Editor** tab will open.
-5.  **Edit**: Drag across the image to redact sensitive areas.
-6.  **Export**: Choose PNG, Copy to Clipboard, Single Page PDF, or Paginated A4 PDF.
+## Tests
 
-## 🤝 Contributing
+```bash
+npm test
+```
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Runs unit tests for scroll-position and stitch math (`lib/stitch.test.js`).
 
-## 📄 License
+## Troubleshooting
 
-MIT License. See [LICENSE](LICENSE) for details.
+| Issue | Fix |
+|--------|-----|
+| “Cannot capture this page” | Use a regular `https://` page, not Chrome settings or extensions |
+| Blank or short capture | Increase **Load Delay** in the popup (try 800–1200 ms on heavy sites) |
+| Repeated header in slices | Enable **Hide Sticky Elements** |
+| Editor shows “No capture data” | Capture may have failed — check badge showed ERR and retry |
 
----
-*Built with ❤️ by the Gnomad team.*
+## Tech
+
+Manifest V3 service worker, injected content script (single listener per tab), `chrome.tabs.captureVisibleTab`, Canvas stitch, jsPDF.
+
+## License
+
+MIT © 2026 David the Gnomad Inc.

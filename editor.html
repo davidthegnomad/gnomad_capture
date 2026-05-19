@@ -88,13 +88,14 @@
             </select>
             <button id="savePdf" class="primary">Export PDF</button>
         </div>
-        <span style="font-size:11px; opacity:0.7;">Click & Drag on image to Redact (Black out)</span>
+        <span id="status" style="font-size:11px; opacity:0.85; margin-left:auto;">Loading…</span>
     </header>
     <div id="container">
         <canvas id="canvas"></canvas>
     </div>
+    <p style="margin:0;padding:8px 20px;font-size:11px;color:#94a3b8;background:#111827;">Click and drag on the image to redact (black out) sensitive areas.</p>
     <script src="lib/jspdf.umd.min.js"></script>
-    <script src="editor.js"></script>
+    <script type="module" src="editor.js"></script>
 </body>
 
 </html>
