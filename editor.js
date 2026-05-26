@@ -1,122 +1,59 @@
-import { api } from './utils.js';
-import { computeCropTopPx, computeDrawRect, computeCanvasHeightPx } from './lib/stitch.js';
-
-const canvas = document.getElementById('canvas');
-const ctx = canvas.getContext('2d');
-const statusEl = document.getElementById('status');
-
+const api = globalThis.browser || globalThis.chrome;
+let canvas = document.getElementById('canvas');
+let ctx = canvas.getContext('2d');
 let isDrawing = false;
-let startX = 0;
-let startY = 0;
-
-function setStatus(msg, isError = false) {
-    if (!statusEl) return;
-    statusEl.textContent = msg;
-    statusEl.style.color = isError ? '#fca5a5' : '#94a3b8';
-}
-
-async function loadImage(src) {
-    const img = new Image();
-    img.src = src;
-    await new Promise((resolve, reject) => {
-        img.onload = () => resolve(img);
-        img.onerror = () => reject(new Error('Failed to decode capture chunk'));
-    });
-    return img;
-}
-
-function normalizeChunks(chunks, dpr) {
-    return chunks.map((c, i) => {
-        const scrollY = c.scrollY ?? (typeof c.y === 'number' ? c.y / dpr : 0);
-        const prev = chunks[i - 1];
-        const prevScrollY =
-            c.prevScrollY ??
-            (i > 0 ? (prev.scrollY ?? (typeof prev.y === 'number' ? prev.y / dpr : 0)) : null);
-        return {
-            dataUri: c.dataUri,
-            scrollY,
-            prevScrollY,
-            index: c.index ?? i,
-        };
-    });
-}
-
-async function stitchCapture(data) {
-    if (!data?.chunks?.length) {
-        throw new Error('No capture data found.');
-    }
-
-    const { height, vh, dpr } = data;
-    const chunks = normalizeChunks(data.chunks, dpr);
-    const firstImg = await loadImage(chunks[0].dataUri);
-    const chunkW = firstImg.width;
-    const chunkH = firstImg.height;
-
-    const scrollPositions = chunks.map((c) => c.scrollY);
-    const canvasH = computeCanvasHeightPx(scrollPositions, vh, height, chunkH, dpr);
-
-    canvas.width = chunkW;
-    canvas.height = Math.max(canvasH, 1);
-
-    const cssWidth = Math.round(chunkW / dpr);
-    const cssHeight = Math.round(canvas.height / dpr);
-    canvas.style.width = `${cssWidth}px`;
-    canvas.style.height = `${cssHeight}px`;
-
-    for (const chunk of chunks) {
-        const img = chunk.index === 0 ? firstImg : await loadImage(chunk.dataUri);
-        const cropTop = computeCropTopPx(chunk.scrollY, chunk.prevScrollY, vh, dpr);
-        const { destY, sourceY, drawHeight } = computeDrawRect(
-            chunk.scrollY,
-            height,
-            vh,
-            chunkH,
-            dpr,
-            cropTop
-        );
-
-        if (drawHeight <= 0) continue;
-
-        ctx.drawImage(
-            img,
-            0,
-            sourceY,
-            chunkW,
-            drawHeight,
-            0,
-            destY,
-            chunkW,
-            drawHeight
-        );
-    }
-
-    setStatus(`Stitched ${chunks.length} sections · ${cssWidth}×${cssHeight}px`);
-}
+let startX, startY;
 
 document.addEventListener('DOMContentLoaded', async () => {
     const params = new URLSearchParams(window.location.search);
     const id = params.get('id');
+    const data = (await api.storage.local.get(id))[id];
 
-    if (!id) {
-        setStatus('Missing capture id.', true);
-        return;
+    if (!data || !data.chunks || data.chunks.length === 0) return;
+
+    // Stitching Logic: Rely on FIRST chunk for real width
+    const firstChunk = new Image();
+    firstChunk.src = data.chunks[0].dataUri;
+    await new Promise(r => firstChunk.onload = r);
+
+    const realChunkWidth = firstChunk.width;
+    const realChunkHeight = firstChunk.height;
+
+    // Total Height Calculation
+    let maxH = 0;
+    for (const c of data.chunks) {
+        if (c.y + realChunkHeight > maxH) maxH = c.y + realChunkHeight;
     }
 
-    setStatus('Loading capture…');
+    // Set Internal Resolution
+    canvas.width = realChunkWidth;
+    canvas.height = maxH > 0 ? maxH : (data.height * data.dpr);
 
-    try {
-        const stored = await api.storage.local.get(id);
-        const data = stored[id];
-        await stitchCapture(data);
-    } catch (err) {
-        console.error(err);
-        setStatus(err.message || 'Failed to load capture.', true);
+    // Set Display Size (maintain aspect ratio)
+    // We default to the 'CSS pixel' width reported by the page.
+    const effectiveDPR = data.dpr || 1;
+    const cssWidth = Math.round(realChunkWidth / effectiveDPR);
+    const cssHeight = Math.round(canvas.height / effectiveDPR);
+
+    canvas.style.width = cssWidth + 'px';
+    canvas.style.height = cssHeight + 'px';
+
+    // Draw Chunks
+    for (const chunk of data.chunks) {
+        const img = new Image();
+        img.src = chunk.dataUri;
+        await new Promise(r => img.onload = r);
+        ctx.drawImage(img, 0, chunk.y);
     }
 
+    // Init Redaction Tool
     canvas.addEventListener('mousedown', startRedacting);
     canvas.addEventListener('mousemove', drawRedacting);
     canvas.addEventListener('mouseup', stopRedacting);
 });
+
+// REDACTION LOGIC
+let savedCanvasState = null;
 
 function startRedacting(e) {
     isDrawing = true;
@@ -124,78 +61,108 @@ function startRedacting(e) {
     const scale = canvas.width / rect.width;
     startX = (e.clientX - rect.left) * scale;
     startY = (e.clientY - rect.top) * scale;
+    
+    // Cache the clean state of the canvas
+    savedCanvasState = ctx.getImageData(0, 0, canvas.width, canvas.height);
 }
 
-function drawRedacting() {
-    // Live preview optional
+function drawRedacting(e) {
+    if (!isDrawing || !savedCanvasState) return;
+    const rect = canvas.getBoundingClientRect();
+    const scale = canvas.width / rect.width;
+    const currentX = (e.clientX - rect.left) * scale;
+    const currentY = (e.clientY - rect.top) * scale;
+
+    // Restore original clean state
+    ctx.putImageData(savedCanvasState, 0, 0);
+
+    // Draw high-end translucent preview with neon border
+    ctx.fillStyle = "rgba(0, 0, 0, 0.4)";
+    ctx.strokeStyle = "#818cf8"; // Modern indigo neon
+    ctx.lineWidth = Math.max(1, 2 * scale);
+    
+    const x = Math.min(startX, currentX);
+    const y = Math.min(startY, currentY);
+    const w = Math.abs(currentX - startX);
+    const h = Math.abs(currentY - startY);
+
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeRect(x, y, w, h);
 }
 
 function stopRedacting(e) {
-    if (!isDrawing) return;
+    if (!isDrawing || !savedCanvasState) return;
     const rect = canvas.getBoundingClientRect();
     const scale = canvas.width / rect.width;
     const endX = (e.clientX - rect.left) * scale;
     const endY = (e.clientY - rect.top) * scale;
 
+    // Restore original clean state to wipe the preview border
+    ctx.putImageData(savedCanvasState, 0, 0);
+
+    // Draw final solid black redacted region
+    ctx.fillStyle = "black";
     const x = Math.min(startX, endX);
     const y = Math.min(startY, endY);
     const w = Math.abs(endX - startX);
     const h = Math.abs(endY - startY);
 
-    if (w > 2 && h > 2) {
-        ctx.fillStyle = '#000000';
-        ctx.fillRect(x, y, w, h);
-    }
+    ctx.fillRect(x, y, w, h);
+    
     isDrawing = false;
+    savedCanvasState = null;
 }
 
-document.getElementById('savePng')?.addEventListener('click', () => {
+// EXPORT LOGIC
+document.getElementById('savePng').addEventListener('click', () => {
     const link = document.createElement('a');
-    link.download = `gnomad-capture-${Date.now()}.png`;
-    link.href = canvas.toDataURL('image/png');
+    link.download = 'capture.png';
+    link.href = canvas.toDataURL("image/png");
     link.click();
 });
 
-document.getElementById('copyBtn')?.addEventListener('click', async () => {
-    try {
-        const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
-        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-        setStatus('Copied to clipboard.');
-    } catch (err) {
-        setStatus('Clipboard failed — try Save PNG.', true);
-    }
+document.getElementById('copyBtn').addEventListener('click', () => {
+    canvas.toBlob(blob => {
+        const item = new ClipboardItem({ "image/png": blob });
+        navigator.clipboard.write([item]);
+        alert("Copied to clipboard!");
+    });
 });
 
-document.getElementById('savePdf')?.addEventListener('click', () => {
+document.getElementById('savePdf').addEventListener('click', () => {
     const { jsPDF } = window.jspdf;
     const mode = document.getElementById('pdfMode').value;
-    const imgData = canvas.toDataURL('image/jpeg', 0.92);
+    const imgData = canvas.toDataURL("image/jpeg", 0.9);
 
     if (mode === 'single') {
         const pdf = new jsPDF({
             orientation: canvas.width > canvas.height ? 'l' : 'p',
             unit: 'px',
-            format: [canvas.width, canvas.height],
+            format: [canvas.width, canvas.height]
         });
         pdf.addImage(imgData, 'JPEG', 0, 0, canvas.width, canvas.height);
         pdf.save('gnomad-full.pdf');
     } else {
+        // A4 Paginated Logic
         const pdf = new jsPDF('p', 'mm', 'a4');
         const pageWidth = pdf.internal.pageSize.getWidth();
         const pageHeight = pdf.internal.pageSize.getHeight();
-        const imgWidthMm = pageWidth;
-        const imgHeightMm = (canvas.height * pageWidth) / canvas.width;
+        const imgWidthPx = canvas.width;
+        const imgHeightPx = canvas.height;
 
-        let heightLeft = imgHeightMm;
+        const ratio = pageWidth / (imgWidthPx / (window.devicePixelRatio || 1) * 3.78); // px to mm approx
+        const scaledImgHeight = (imgHeightPx * (pageWidth / imgWidthPx));
+
+        let heightLeft = scaledImgHeight;
         let position = 0;
 
-        pdf.addImage(imgData, 'JPEG', 0, position, imgWidthMm, imgHeightMm);
+        pdf.addImage(imgData, 'JPEG', 0, position, pageWidth, scaledImgHeight);
         heightLeft -= pageHeight;
 
-        while (heightLeft > 0) {
-            position -= pageHeight;
+        while (heightLeft >= 0) {
+            position = heightLeft - scaledImgHeight;
             pdf.addPage();
-            pdf.addImage(imgData, 'JPEG', 0, position, imgWidthMm, imgHeightMm);
+            pdf.addImage(imgData, 'JPEG', 0, position, pageWidth, scaledImgHeight);
             heightLeft -= pageHeight;
         }
         pdf.save('gnomad-paginated.pdf');
